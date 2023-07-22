@@ -1,0 +1,247 @@
+package ACO;
+
+
+import org.cloudbus.cloudsim.*;
+import org.cloudbus.cloudsim.core.CloudSim;
+
+import ACO.ACO.position;
+import IPSO_NA.PSODatacenterBroker;
+import utils.Constants;
+import utils.DatacenterCreator;
+import utils.GenerateMatrices;
+
+import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
+import java.util.*;
+
+public class ACO_Scheduler {
+
+    private static List<Cloudlet> cloudletList;
+    private static List<Vm> vmList;
+    private static Datacenter[] datacenter;
+    private static ACO PSOSchedularInstance;
+    private static double mapping[];
+    private static double[][] commMatrix;
+    private static double[][] execMatrix;
+	private static int tasks;
+	private static int vms;
+	private static double[][] etc;
+
+    private static List<Vm> createVM(int userId, int vms) {
+        //Creates a container to store VMs. This list is passed to the broker later
+        LinkedList<Vm> list = new LinkedList<Vm>();
+
+        //VM Parameters
+        long size = 10000; //image size (MB)
+        int ram = 512; //vm memory (MB)
+        int mips = 1000;
+        long bw = 1000;
+        int pesNumber = 1; //number of cpus
+        String vmm = "Xen"; //VMM name
+        
+        //create VMs
+        Vm[] vm = new Vm[vms];
+
+        for (int i = 0; i < vms; i++) {
+            vm[i] = new Vm(datacenter[i].getId(), userId, mips, pesNumber, ram, bw, size, vmm, new CloudletSchedulerSpaceShared());
+            list.add(vm[i]);
+        }
+
+        return list;
+    }
+
+    private static List<Cloudlet> createCloudlet(int userId, int cloudlets, int idShift) {
+        LinkedList<Cloudlet> list = new LinkedList<Cloudlet>();
+
+        //new:
+       // int minLength=1000;
+       // int maxLenght=2000;
+
+        //cloudlet parameters
+        long fileSize = 300;
+        long outputSize = 300;
+        int pesNumber = 1;
+        UtilizationModel utilizationModel = new UtilizationModelFull();
+
+        Cloudlet[] cloudlet = new Cloudlet[cloudlets];
+
+        for (int i = 0; i < cloudlets; i++) {
+            int dcId = (int) (mapping[i]);
+            long length = (long) (1e3 * (commMatrix[i][dcId] + execMatrix[i][dcId]));
+            //new
+         //   long length= minLength + (int) (Math.random() * (maxLenght));
+            cloudlet[i] = new Cloudlet(idShift + i, length, pesNumber, fileSize, outputSize, utilizationModel, utilizationModel, utilizationModel);
+            cloudlet[i].setUserId(userId);
+            list.add(cloudlet[i]);
+        }
+
+        return list;
+    }
+
+    public static void main(String[] args) {
+        Log.printLine("Starting ACO Scheduler...");
+
+        new GenerateMatrices();
+        commMatrix = GenerateMatrices.getCommMatrix();
+        execMatrix = GenerateMatrices.getExecMatrix();
+//        PSOSchedularInstance = new PSO();
+//        mapping = PSOSchedularInstance.run();
+        SimpleDateFormat ft = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");// 设置时间格式
+		String startDate = ft.format(new Date());
+		System.out.println("开始时间: "+startDate);
+		// 开始时间
+        long stime = System.currentTimeMillis();
+        System.out.printf("开始时间： "+stime );
+        ACO aco;
+		aco = new ACO();
+		aco.init(5, execMatrix.length, execMatrix[0].length, execMatrix, commMatrix);
+		aco.run(10);//5个蚂蚁0代
+		position[] posi = aco.ReportResult();
+		
+		
+		
+		double[] map= new double [posi.length];
+		System.out.println(posi.length);
+		for(int i=0;i<posi.length;i++) {
+			System.out.println(posi[i].task-1 + "  " + posi[i].vm);
+			map[posi[i].task]= posi[i].vm;
+		}
+		for(int j=0;j<map.length;j++) {
+			System.out.println("mapping"+map[j]);
+		}
+		mapping = map;
+        try {
+            int num_user = 1;   // number of grid users
+            Calendar calendar = Calendar.getInstance();
+            boolean trace_flag = false;  // mean trace events
+
+            CloudSim.init(num_user, calendar, trace_flag);
+
+            // Second step: Create Datacenters
+            datacenter = new Datacenter[Constants.NO_OF_DATA_CENTERS];
+            for (int i = 0; i < Constants.NO_OF_DATA_CENTERS; i++) {
+                datacenter[i] = DatacenterCreator.createDatacenter("Datacenter_" + i);
+            }
+
+            //Third step: Create Broker
+            PSODatacenterBroker broker = createBroker("Broker_0");
+            int brokerId = broker.getId();
+
+            //Fourth step: Create VMs and Cloudlets and send them to broker
+            vmList = createVM(brokerId, Constants.NO_OF_DATA_CENTERS);
+            cloudletList = createCloudlet(brokerId, Constants.NO_OF_TASKS, 0);
+
+            // mapping our dcIds to cloudsim dcIds
+            HashSet<Integer> dcIds = new HashSet<>();
+            HashMap<Integer, Integer> hm = new HashMap<>();
+            for (Datacenter dc : datacenter) {
+                if (!dcIds.contains(dc.getId()))
+                    dcIds.add(dc.getId());
+            }
+            Iterator<Integer> it = dcIds.iterator();
+            for (int i = 0; i < mapping.length; i++) {
+                if (hm.containsKey((int) mapping[i])) continue;
+                hm.put((int) mapping[i], it.next());
+            }
+            for (int i = 0; i < mapping.length; i++)
+                mapping[i] = hm.containsKey((int) mapping[i]) ? hm.get((int) mapping[i]) : mapping[i];
+
+            broker.submitVmList(vmList);
+            broker.setMapping(mapping);
+            broker.submitCloudletList(cloudletList);
+
+
+            // Fifth step: Starts the simulation
+            CloudSim.startSimulation();
+
+            List<Cloudlet> newList = broker.getCloudletReceivedList();
+
+            CloudSim.stopSimulation();
+
+            printCloudletList(newList);
+
+            Log.printLine(ACO_Scheduler.class.getName() + " finished!");
+        } catch (Exception e) {
+            e.printStackTrace();
+            Log.printLine("The simulation has been terminated due to an unexpected error");
+        }
+     // 结束时间
+        long etime = System.currentTimeMillis();
+     // 计算执行时间
+        System.out.printf("执行时长：%d 毫秒.", etime-stime ,"ms");
+    }
+
+    private static PSODatacenterBroker createBroker(String name) throws Exception {
+        return new PSODatacenterBroker(name);
+    }
+
+    /**
+     * Prints the Cloudlet objects
+     *
+     * @param list list of Cloudlets
+     */
+    private static void printCloudletList(List<Cloudlet> list) {
+        int size = list.size();
+        Cloudlet cloudlet;
+
+        String indent = "    ";
+        Log.printLine();
+        Log.printLine("========== OUTPUT ==========");
+        Log.printLine("Cloudlet ID" + indent + "STATUS" +
+                indent + "Data center ID" +
+                indent + "VM ID" +
+                indent + indent + "Time" +
+                indent + "Start Time" +
+                indent + "Finish Time");
+        
+        //HERE:
+        double totalCompletionTime=0;
+        double totalCost=0;
+        double totalWaitingTime=0;
+        //-------------------------
+
+        double mxFinishTime = 0;
+        DecimalFormat dft = new DecimalFormat("###.##");
+        dft.setMinimumIntegerDigits(2);
+        for (int i = 0; i < size; i++) {
+            cloudlet = list.get(i);
+            Log.print(indent + dft.format(cloudlet.getCloudletId()) + indent + indent);
+
+            if (cloudlet.getCloudletStatus() == Cloudlet.SUCCESS) {
+                Log.print("SUCCESS");
+                //HERE:
+                double completionTime= cloudlet.getActualCPUTime()+ cloudlet.getWaitingTime();
+                double cost= cloudlet.getCostPerSec()* cloudlet.getActualCPUTime() ;
+                //Note: the execution time for a task is cloudlet.getActualCPUTime()
+                
+                Log.printLine(indent + indent + dft.format(cloudlet.getResourceId()) +
+                        indent + indent + indent + dft.format(cloudlet.getVmId()) +
+                        indent + indent + dft.format(cloudlet.getActualCPUTime()) +
+                        indent + indent + dft.format(cloudlet.getExecStartTime()) +
+                        indent + indent + indent + dft.format(cloudlet.getFinishTime()));
+                //HERE:
+                totalCompletionTime += completionTime;
+                totalCost += cost;
+                totalWaitingTime += cloudlet.getWaitingTime();
+                
+                //-----------------------------------------
+            }
+            
+            
+            mxFinishTime = Math.max(mxFinishTime, cloudlet.getFinishTime());
+        }
+        Log.printLine(mxFinishTime);
+//        PSOSchedularInstance.printBestFitness();
+        //Added:
+        Log.printLine("Total Completion Time: " + totalCompletionTime +" Avg Completion Time: "+ (totalCompletionTime/size));
+        Log.printLine("Total Cost : " + totalCost+ " Avg cost: "+ (totalCost/size));
+        Log.printLine("Avg Waiting Time: "+ (totalWaitingTime/size));
+        SimpleDateFormat ft1 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");// 设置时间格式
+		String endDate = ft1.format(new Date());
+	 System.out.println("结束时间: "+ endDate);
+	
+    }
+    
+    
+    
+}

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Copy package &apos;FCFSnew&apos; to &apos;Algorithm/src&apos;&#x0D;&#x0A;- Original project: &apos;cloudsim-task-scheduling-master&apos;&#x0D;&#x0A;- Destination element: &apos;Algorithm/src&apos;&#x0D;&#x0A;- Original element: &apos;cloudsim-task-scheduling-master/cloudsim-task-scheduling-master/src/FCFSnew&apos;" description="Copy package" destination="=Algorithm/src" element1="/cloudsim-task-scheduling-master\/src&lt;FCFSnew" flags="589830" fragments="1" id="org.eclipse.jdt.ui.copy" policy="org.eclipse.jdt.ui.copyPackages" stamp="1656677410279" version="1.0"/>
+</session>

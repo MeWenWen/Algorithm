@@ -1,0 +1,13 @@
+breadcrumb.org.eclipse.debug.ui.DebugPerspective=true
+breadcrumb.org.eclipse.jdt.ui.JavaPerspective=true
+content_assist_lru_history=<?xml version\="1.0" encoding\="UTF-8" standalone\="no"?><history maxLHS\="100" maxRHS\="10"><lhs name\="java.lang.Number"><rhs name\="java.math.BigDecimal"/></lhs><lhs name\="java.math.BigDecimal"><rhs name\="java.math.BigDecimal"/></lhs><lhs name\="net.sourceforge.jswarm_pso.Particle"><rhs name\="SAPSO.SchedulerParticle"/><rhs name\="PSO2.SchedulerParticle"/></lhs><lhs name\="SAPSO.SchedulerParticle"><rhs name\="SAPSO.SchedulerParticle"/></lhs><lhs name\="PSO2.SchedulerParticle"><rhs name\="PSO2.SchedulerParticle"/></lhs></history>
+content_assist_number_of_computers=14
+content_assist_proposals_background=255,255,255
+content_assist_proposals_foreground=0,0,0
+eclipse.preferences.version=1
+org.eclipse.jdt.internal.ui.navigator.layout=2
+org.eclipse.jdt.internal.ui.navigator.librariesnode=true
+org.eclipse.jdt.ui.formatterprofiles.version=21
+spelling_locale_initialized=true
+useAnnotationsPrefPage=true
+useQuickDiffPrefPage=true

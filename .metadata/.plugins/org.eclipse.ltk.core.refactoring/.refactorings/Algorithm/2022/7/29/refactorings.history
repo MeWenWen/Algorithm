@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Copy element &apos;MMIN.java&apos; to &apos;ZZZL/src/com.hww.MINMIN&apos;&#x0D;&#x0A;- Original project: &apos;Algorithm&apos;&#x0D;&#x0A;- Destination element: &apos;ZZZL/src/com.hww.MINMIN&apos;&#x0D;&#x0A;- Original element: &apos;MINMIN.MMIN.java&apos;" description="Copy compilation unit" destination="=ZZZL/src&lt;com.hww.MINMIN" element1="/src&lt;MINMIN{MMIN.java" files="0" flags="589830" folders="0" id="org.eclipse.jdt.ui.copy" policy="org.eclipse.jdt.ui.copyResources" stamp="1657612850250" units="1" version="1.0"/>
+</session>

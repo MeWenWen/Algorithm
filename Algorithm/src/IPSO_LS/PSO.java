@@ -1,0 +1,530 @@
+package IPSO_LS;
+
+import java.awt.geom.RoundRectangle2D.Double;
+import java.math.BigDecimal;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Random;
+
+import net.sourceforge.jswarm_pso.Particle;
+import net.sourceforge.jswarm_pso.Swarm;
+import utils.Constants;
+import utils.GenerateMatrices;
+import PSO.*;
+
+public class PSO {
+	public static double W_MAX = 0.9;
+	public static double W_MIN = 0.4;
+	public static double W;
+	private static Swarm swarm;
+	private static SchedulerParticle particles[];
+	private static SchedulerFitnessFunction ff = new SchedulerFitnessFunction();
+	private Particle particle;
+	private int num;
+	private static double[][] etc1 = GenerateMatrices.getCommMatrix();
+	private static double[][] etc2 = GenerateMatrices.getExecMatrix();
+	private static double[][] etc = new double[etc1.length][etc1[0].length];
+	private static double ex_max = 0;
+
+	public PSO() {
+		initParticles();
+	}
+
+	public double[] run() {
+
+		swarm = new Swarm(Constants.POPULATION_SIZE, new SchedulerParticle(), ff);
+		swarm.setMinPosition(0);
+		swarm.setMaxPosition(Constants.NO_OF_DATA_CENTERS - 1);
+		swarm.setMaxMinVelocity(0.5);
+		swarm.setParticles(particles);
+		swarm.setParticleUpdate(new SchedulerParticleUpdate(new SchedulerParticle()));
+		int TMax = 800;
+		double min = java.lang.Double.MAX_VALUE;
+		HashMap<java.lang.Double, double[]> globalfitness = new HashMap<java.lang.Double, double[]>();
+//		ArrayList<java.lang.Double> globalfitness2 = new ArrayList<java.lang.Double>();
+
+		for (int k = 0; k < etc1.length; k++) {
+			for (int l = 0; l < etc1[0].length; l++) {
+				etc[k][l] = etc1[k][l] + etc2[k][l];
+			}
+		}
+
+		for (int i = 0; i < TMax; i++) {
+			// IPSO
+			W = W_MAX - i * (W_MAX - W_MIN) / TMax;
+			swarm.evolve();
+
+//         if (i % 10 == 0) {
+			// 当五次迭代值
+			if (i % 5 == 0) {
+				if (min > swarm.getBestFitness()) {
+					min = swarm.getBestFitness();
+					num = 0;
+				}
+				// 都不变的情况下记录
+				if (min == swarm.getBestFitness()) {
+					num++;
+				}
+
+				// 任务分配矩阵---ETC---makespans
+				if (num >= 5) {
+					double[] r = swarm.getBestPosition();// 记录结果,将二维矩阵变一维
+					int[][] task_vm = new int[etc.length][etc[0].length];
+					for (int j = 0; j < task_vm.length; j++) {
+						int vmId = (int) r[j];
+						task_vm[j][vmId] = 1;
+					}
+					// 记录makespan
+					double[] makespans = new double[etc[0].length];
+					for (int m = 0; m < task_vm.length; m++) {
+						for (int n = 0; n < task_vm[0].length; n++) {
+							if (task_vm[m][n] == 1) {
+								makespans[n] += etc[m][n];
+
+							}
+
+						}
+					}
+//					for(int w=0;w<makespans.length;w++) {
+//						System.out.print(makespans[w]+" ");
+//					}
+
+					System.out.println();
+					// 将任务交后的结果当作当前最优的位置即任务分配的结果
+					task_vm = exchangeTask(makespans, etc, task_vm);
+//					(int[][] task_vm, double[] nodeOkTime, double[][] etc)
+//					task_vm = exchangeTask1(task_vm, makespans, etc);
+					// 1.设置当前最优粒子的ID 注意!!!!是粒子的ID
+					// 1.1当前是将任务交换后的结果当作最优粒子的位置,但是当前的
+					// 粒子中没有这个最优分配果结,所以无法设置这个最优粒子ID
+					// 1.2从N个粒子中,找到一个粒子,然后将这个粒子,当作最优粒子,当然
+					// 需要将这个粒子的位置设置成当前最优的这个即任务交换后的分配结果
+					double[] result = swarm.getBestPosition();
+					for (int q = 0; q < task_vm.length; q++) {
+						for (int z = 0; z < task_vm[0].length; z++) {
+							if (task_vm[q][z] == 1) {
+								result[q] = z;
+							}
+						}
+					}
+
+					// 设置最优位置
+//					System.out.println("==="+result.length);
+					Particle bestParticle = swarm.getBestParticle();
+					bestParticle.setBestPosition(result);
+					swarm.setBestParticleIndex(swarm.getBestParticleIndex());
+
+					double[] nowResult = new double[etc.length];
+					for (int n = 0; n < nowResult.length; n++) {// result是个引用类型,所以需要用到nowResult存储一下
+						nowResult[n] = result[n];
+					}
+					swarm.setBestPosition(result);
+					globalfitness.put(ex_max, nowResult);
+//					System.out.println("是谁!!  "+ ff.calcMakespan(result)+ " "+ex_max);
+//					for(int n=0;n<result.length;n++) {
+//						System.out.print(result[n]+" ");
+//					}
+//					System.out.println();
+
+				}
+				System.out.println();
+				System.out.printf("Gloabl best at iteration (%d): %f\n", i, swarm.getBestFitness());
+				System.out.println("\nBest makespan: " + ff.calcMakespan(swarm.getBestParticle().getBestPosition()));
+			}
+		}
+		globalfitness.put(swarm.getBestFitness(), swarm.getBestPosition());
+		// hashmap取出来对比值,找最小值
+		min = java.lang.Double.MAX_VALUE;
+//	    double[] position = swarm.getBestPosition();
+//		for(Map.Entry<double[], java.lang.Double> entry : globalfitness.entrySet()) {
+//			System.out.print("value: "+ entry.getValue()+" ");
+//		}
+//		System.out.println();
+
+		for (Map.Entry<java.lang.Double, double[]> entry : globalfitness.entrySet()) {
+//			System.out.println("entry.getValue():"+entry.getValue());
+			if (entry.getKey() < min) {
+				min = entry.getKey();
+				swarm.setBestPosition(entry.getValue());
+//				System.out.println("!!!!!!!!!min: "+min+"????entry.getKey(): "+ff.calcMakespan(entry.getValue()));
+				for (int n = 0; n < entry.getValue().length; n++) {
+					System.out.print(entry.getValue()[n] + " ");
+				}
+				System.out.println();
+			}
+
+		}
+
+//		System.out.println("min = "+min);
+
+//		System.out.println("\nThe best fitness value: " + min + "\nBest makespan: "
+//				+ ff.calcMakespan(swarm.getBestPosition()));
+		System.out.println("\nThe best fitness value: " + swarm.getBestFitness() + "\nBest makespan: "
+				+ ff.calcMakespan(swarm.getBestParticle().getBestPosition()));
+
+//		System.out.println("The best solution is: ");/
+//		SchedulerParticle bestParticle = (SchedulerParticle) swarm.getBestParticle();
+//		System.out.println(bestParticle.toString());
+
+		return swarm.getBestPosition();
+	}
+
+	private static void initParticles() {
+		particles = new SchedulerParticle[Constants.POPULATION_SIZE];
+		for (int i = 0; i < Constants.POPULATION_SIZE; ++i)
+			particles[i] = new SchedulerParticle();
+	}
+
+	public void printBestFitness() {
+		System.out.println(swarm.getBestParticle().getBestPosition().length);
+//		System.out.println("\nBest fitness value: " + swarm.getBestFitness() + "\nBest makespan: "
+//				+ ff.calcMakespan(swarm.getBestParticle().getBestPosition()));
+		System.out.println("\nThe best fitness value: " + swarm.getBestFitness() + "\nBest makespan: "
+				+ ff.calcMakespan(swarm.getBestParticle().getBestPosition()));
+	}
+
+	public static int[][] exchangeTask(double[] makespans, double[][] etc, int[][] task_dis) {
+
+		boolean is_zdkjh = true; // 是否找到可重新调度的节点
+		boolean[] isceshi = new boolean[makespans.length];// 在Rfrom不变的条件下,如果在某节点上没有分配成功就把该节点标记Rto为true,
+		boolean[] is_vm_id_ok = new boolean[makespans.length];// 在某Rfrom节点上都不能分配,就将该节点标记为true
+		boolean is_vm_id = false;
+		DecimalFormat df = new DecimalFormat("######0.00");
+
+		for (int k = 0; k < etc.length; k++) {
+//			System.out.println(etc.length);
+//		System.out.println("=============");
+			int minid = 0;
+			int maxid = 0;
+			double min = java.lang.Double.MAX_VALUE;
+			double max = 0;
+
+			// 找Rf,Rt的 id※
+
+			for (int i = 0; i < makespans.length; i++) {
+				if (is_vm_id) {
+					if (!is_vm_id_ok[i]) { // [false,false,false] === 1节点不能在任何一个节点分配的时候 [true,false,false]//判断记录该节点上,
+						if (makespans[i] > max) {
+							max = makespans[i];
+							maxid = i; // 用来记录最大的id
+						}
+					}
+				} else {
+					if (makespans[i] > max) {// 主要是在遍历的过程中,任务可交换
+						if (!is_vm_id_ok[i]) {
+							max = makespans[i];
+							maxid = i;
+						}
+
+					}
+				}
+
+				if (is_zdkjh) {
+					if (makespans[i] < min) {
+						min = makespans[i];
+						minid = i;
+					}
+				} else { // false 没有分配 [1,2,3]
+					if (!isceshi[i]) { // [false,false,false] [false,true,false]
+
+						if (makespans[i] < min) {
+							// 随机获取一个下标
+//						int index =new Random().nextInt(makespans.length);
+							min = makespans[i];
+							minid = i;
+						}
+					}
+				}
+
+//		  if(makespans[i]<min) {
+//			  min=makespans[i];//RT
+//			  minid=i;
+//		  }
+//		  
+//		  if(makespans[i]>max) {
+//			  max=makespans[i];//RF
+//			  maxid=i;
+//		  }
+			}
+
+//	   System.out.println("min: "+ min);
+//	   System.out.println("minid: "+ minid);
+//	   System.out.println("max: "+ max);
+//	   System.out.println("maxid: "+ maxid);
+
+			// 输出分配矩阵
+//	 		for(int i=0;i<task_dis.length;i++) {
+//	 			for(int j=0;j<task_dis[0].length;j++) {
+//	 				System.out.print(task_dis[i][j]+" ");
+//	 			}
+//	 			System.out.println();
+//	 		}
+//	 		
+//	 		//etc
+//	 		//输出分配矩阵
+//			for(int i=0;i<etc.length;i++) {
+//				for(int j=0;j<etc[0].length;j++) {
+//					System.out.print(etc[i][j]+" ");
+//				}
+//				System.out.println();
+//			}
+
+			min = java.lang.Double.MAX_VALUE;
+			int id = 0;
+			for (int i = 0; i < etc.length; i++) {
+				if (task_dis[i][maxid] == 1) {
+					if (etc[i][minid] < min) {
+						// 随机
+						int index = new Random().nextInt(etc[i].length);
+//				   min=etc[index][minid];
+//				   id = minid;
+						min = etc[i][minid];
+						id = i;
+						is_zdkjh = false;
+
+					}
+				}
+			}
+//	   System.out.println("min: "+ min );
+//	   System.out.println("id: "+ id);
+
+			if (makespans[minid] + etc[id][minid] < makespans[maxid]) {// 1+2
+				makespans[minid] = makespans[minid] + etc[id][minid];
+				makespans[maxid] = makespans[maxid] - etc[id][maxid];
+				task_dis[id][minid] = 1;
+				task_dis[id][maxid] = 0;
+				is_zdkjh = true;// 当前可以分配
+				isceshi = new boolean[makespans.length];
+				is_vm_id_ok = new boolean[makespans.length];
+//		   System.out.println("min: "+ min+"etc[id][minid] :"+ etc[id][minid]+"makespans[maxid]:"+makespans[maxid]);
+			}
+
+			if (!is_zdkjh) { // min_vmid无法分配任务
+				isceshi[minid] = true;
+			}
+
+			is_vm_id = true;
+			is_vm_id_ok[maxid] = true;
+			for (int i = 0; i < isceshi.length; i++) {
+				if (!isceshi[i]) {// 在判断的时候,可能存在没有找完的情况,暂时先变成f,等都遍历完之后都不能进行任务交换,再去找第二大.
+					is_vm_id = false;
+					is_vm_id_ok[maxid] = false;
+					break;
+				}
+			}
+
+			if (is_vm_id) {// 如果都遍历完还是不能交换任务,就把所有的变成false,为了下一次找第二大做准备.
+				isceshi = new boolean[makespans.length];
+			}
+
+		}
+		double max = 0;
+		for (int i = 0; i < makespans.length; i++) {
+			if (makespans[i] > max) {
+				max = makespans[i];
+			}
+
+		}
+//		System.out.println("max: "+ max);
+		ex_max = max;
+//		//输出分配矩阵
+//		for(int i=0;i<task_dis.length;i++) {
+//			for(int j=0;j<task_dis[0].length;j++) {
+//				System.out.print(task_dis[i][j]+" ");
+//			}
+//			System.out.println();
+//		}
+//		
+
+		int taskVmnum = etc.length;
+//		System.out.println("任务数量= "+taskVmnum);
+		for (int i = 0; i < task_dis.length; i++) {
+			for (int j = 0; j < task_dis[0].length; j++) {
+				if (task_dis[i][j] == 1) {
+					taskVmnum = taskVmnum - 1;
+				}
+			}
+		}
+
+//		System.out.println("剩余任务= "+taskVmnum);
+
+		// 20210625验证 重新计算
+//		double[] mkspyz = new double[etc[0].length];
+//		System.out.println("task_vm.length= "+task_dis.length);
+//		System.out.println("task_vm[0].length "+task_dis[0].length);
+//		System.out.println("etc.length= "+etc.length);
+//		System.out.println("etc[0].length= "+etc[0].length);
+//		for(int i=0;i<task_dis.length;i++) {
+//			for(int j=0;j<task_dis[0].length;j++) {
+//				if(task_dis[i][j] == 1) {
+//					mkspyz[j] = mkspyz[j] + etc[i][j];
+//				}
+//			}
+//		}
+//		System.out.print("YZX1_SH_YZX_WQYZX=");
+//		for(int i=0;i<mkspyz.length;i++) {
+//			System.out.print(df.format(mkspyz[i])+" ");
+//
+//		}
+
+		return task_dis;
+	}
+
+//public int[][] exchangeTask1(int[][] task_vm, double[] nodeOkTime, double[][] etc){
+//	
+//	long startTime = System.currentTimeMillis();    //获取开始时间
+//	DecimalFormat    df   = new DecimalFormat("######0.00"); 
+//	
+//	boolean is_zdkjh = true; //是否找到可重新调度的节点
+//	boolean[] isceshi = new boolean[nodeOkTime.length];
+//	boolean[] is_vm_id_ok = new boolean[nodeOkTime.length];
+//	boolean is_vm_id = false; //用于判断是否这个最大值下 已经无法分配任何任务
+//	
+//	//每次调整N次
+//	for(int k=0;k<etc.length;k++) {
+//		
+//		//
+//		/**
+//		 * 1.找到最大的makespan 与 最小makespan
+//		 * 2.找到makespan中分配的任务 以及 这些任务在 最小makespan中最小的任务
+//		 * 3。重新计算最小makespan
+//		 * 4、比较最小makespan与原始最大makespan的大小
+//		 * 5.如果大于原始最大makespan 则分配任务 
+//		 * 4、更新分配矩阵、最大makespan 重新进行二次调度
+//		 * ####
+//		 *  未进行按照方差值进行排序
+//		 * ####
+//		 * 
+//		 */
+//		double max = 0.0;
+//		double min = java.lang.Double.MAX_VALUE;
+//		//Rfrom
+//		int max_vmid = 0;
+//		//Rto
+//		int min_vmid = 0;
+//		
+//		for(int i=0;i<nodeOkTime.length;i++) {
+//			
+//			//寻找需要调整的两个结点
+//			if(is_vm_id) //如果为true 则表明 这个MAX 无法在任何一个几点下面调度了
+//			{
+//				if(!is_vm_id_ok[i]) { //排除之前试过的结点
+//					if(nodeOkTime[i]>max) { //找到当前最大的 结点的
+//						max = nodeOkTime[i];
+//						max_vmid = i;
+//					}
+//				}
+//			}else //寻找其他的结点
+//			{
+//				if(nodeOkTime[i]>max) { //寻找最大的结点
+//					if(!is_vm_id_ok[i]) {
+//						max = nodeOkTime[i];
+//						max_vmid = i;
+//					}
+//					
+//				}
+//			}
+//			
+//			
+//			
+//			//如果为true 则表明上次可以正常的进行分配 那么这次寻找最小可以寻找所有的id
+//			if(is_zdkjh) 
+//			{
+//				if(nodeOkTime[i]<min) {
+//					min = nodeOkTime[i];
+//					min_vmid = i;
+//				}
+//			}else {  
+//				if(!isceshi[i]) {
+//					if(nodeOkTime[i]<min) {
+//						min = nodeOkTime[i];
+//						min_vmid = i;
+//					}
+//				}
+//			}
+//		}//~for 寻找结束
+//		
+//		//开始训传最小执行时间的任务
+//		min = java.lang.Double.MAX_VALUE;
+//		int min_taskid = 0;
+//		//记录最大makespan中所有的任务
+//		for(int i=0;i<task_vm.length;i++) {
+//			if(task_vm[i][max_vmid] == 1) {
+//				if(etc[i][min_vmid] < min) {
+//					min = etc[i][min_vmid];
+//					min_taskid = i;
+//					is_zdkjh = false;
+//				}
+//			}
+//	    }//~找到最小执行时间的任务 结束
+//		
+//		//开始判断是否能够进行调整
+//		if(nodeOkTime[min_vmid] +etc[min_taskid][min_vmid]  < nodeOkTime[max_vmid]) {
+//			nodeOkTime[min_vmid] = nodeOkTime[min_vmid] + etc[min_taskid][min_vmid];
+//			nodeOkTime[max_vmid] = nodeOkTime[max_vmid] - etc[min_taskid][max_vmid];
+//			task_vm[min_taskid][min_vmid] = 1;
+//			task_vm[min_taskid][max_vmid] = 0;
+//			is_zdkjh = true;
+//			isceshi = new boolean[nodeOkTime.length];
+//			is_vm_id_ok = new boolean[nodeOkTime.length];
+////			System.out.println("虚拟机 "+(max_vmid+1)+" 中的任务 "+(min_taskid+1)+" 调整到 "+"虚拟机 "+(min_vmid+1));
+//		}//~调整结束
+//		
+//		if(!is_zdkjh) { //min_vmid无法分配任务
+//			isceshi[min_vmid] = true;
+//		}
+//		
+//		is_vm_id = true; //用于判断是不是当前最大ID 已经 测试一遍了
+//		//这个矩阵用于记录当前的最大ID 还需要进行 寻找不用
+//		is_vm_id_ok[max_vmid] = true;
+//		for(int i=0;i<isceshi.length;i++) 
+//		{
+//			//只要有一个当前的最小ID下面 为 false 说明在当前的最打ID不用改变
+//			if(isceshi[i] != true) { 
+//				//依旧使用当前的最大ID
+//				is_vm_id = false;
+//				//这个ID依旧可以使用
+//				is_vm_id_ok[max_vmid] = false;
+//				break;
+//			}
+//		}
+//		
+//		if(is_vm_id) {
+//			isceshi = new boolean[nodeOkTime.length];
+//		}
+//		
+//		
+//	}//~规定的迭代次数
+//	
+//	
+//	double max_ = 0.0;
+//	System.out.print("YZX1_SH_YZX_WQYZX=");
+//	for(int i=0;i<nodeOkTime.length;i++) { //m
+//		System.out.print(df.format(nodeOkTime[i])+" ");
+//		if(nodeOkTime[i]>max_) {
+//			max_ = nodeOkTime[i];
+//		}
+//	}
+//	System.out.println();
+//	System.out.println("YZX1_SH_YZX_WQYZX(MAKESPAN)="+df.format(max_));
+//	long endTime = System.currentTimeMillis();    //获取结束时间
+//	System.out.println("#####################"+" 运行时间"+(endTime - startTime) + "ms");
+//	this.ex_max = max_;
+//	return task_vm;
+//}
+
+//	public static void main(String[] args) {
+//	     double[][] etc9 = {
+//					      {1,2,3},
+//					      {2,4,6},
+//					      {15,30,45},
+//					      {22.5,45,67.5},
+//					      {50,100,150},
+//					      {100,200,300},
+//					    };
+//	}
+
+}
